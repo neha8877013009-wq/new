@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ChromaQuest 3D - Color Match VR</title>
+  <meta name="description" content="A fast-paced 3D Color-Matching Collection Game built for WebXR and Meta Quest 3S.">
+  
+  <!-- A-Frame 1.6.0 CDN -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <!-- Google Fonts for arcade typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #080b14;
+      --panel-bg: rgba(14, 18, 36, 0.85);
+      --panel-border: rgba(0, 242, 254, 0.35);
+      --accent-cyan: #00f2fe;
+      --accent-magenta: #ff007f;
+      --accent-yellow: #ffcc00;
+      --text-main: #ffffff;
+      --text-muted: #8e9bb4;
+      --font-main: 'Outfit', sans-serif;
+      --font-mono: 'Space Grotesk', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      font-family: var(--font-main);
+      color: var(--text-main);
+    }
+
+    /* 2D Overlay UI Layer (visible in 2D / spectator mode) */
+    #ui-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+
+    .interactive {
+      pointer-events: auto;
+    }
+
+    /* Top 2D HUD */
+    #top-hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto;
+      gap: 15px;
+      transition: opacity 0.3s ease;
+    }
+
+    .hud-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 12px 24px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 242, 254, 0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 130px;
+    }
+
+    .hud-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    .hud-value {
+      font-size: 1.8rem;
+      font-weight: 900;
+      font-family: var(--font-mono);
+      color: var(--accent-cyan);
+      text-shadow: 0 0 10px rgba(0, 242, 254, 0.6);
+    }
+
+    /* Target Color Badge */
+    #target-badge-card {
+      padding: 10px 30px;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      background: linear-gradient(135deg, rgba(20, 26, 50, 0.9), rgba(10, 14, 28, 0.95));
+      transform: scale(1.05);
+      animation: pulse-glow 2s infinite alternate ease-in-out;
+    }
+
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 15px rgba(0, 242, 254, 0.3); }
+      100% { box-shadow: 0 0 30px rgba(0, 242, 254, 0.7); }
+    }
+
+    #target-color-preview {
+      display: inline-block;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      margin-right: 8px;
+      vertical-align: middle;
+      border: 2px solid #fff;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    #target-name-display {
+      font-size: 1.6rem;
+      font-weight: 900;
+      letter-spacing: 1px;
+      vertical-align: middle;
+    }
+
+    /* Timer specific styling */
+    #timer-value.warning {
+      color: #ff3366 !important;
+      text-shadow: 0 0 12px rgba(255, 51, 102, 0.8) !important;
+      animation: shake-pulse 0.5s infinite alternate;
+    }
+
+    @keyframes shake-pulse {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.1); }
+    }
+
+    /* Modals & Screens */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(4, 7, 16, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      z-index: 2000;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+
+    .modal-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .game-modal {
+      background: linear-gradient(145deg, rgba(20, 27, 54, 0.95), rgba(8, 12, 25, 0.98));
+      border: 2px solid var(--accent-cyan);
+      border-radius: 28px;
+      padding: 40px;
+      max-width: 540px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 242, 254, 0.3);
+      animation: modal-enter 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes modal-enter {
+      from { transform: scale(0.85) translateY(20px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    .modal-title {
+      font-size: 2.8rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      background: linear-gradient(135deg, #00f2fe, #4facfe, #ff007f);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 15px;
+      filter: drop-shadow(0 2px 10px rgba(0, 242, 254, 0.4));
+    }
+
+    .modal-subtitle {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-bottom: 25px;
+      line-height: 1.5;
+    }
+
+    .instructions-box {
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 18px;
+      margin-bottom: 30px;
+      text-align: left;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .instructions-box ul {
+      list-style-type: none;
+      padding-left: 5px;
+    }
+
+    .instructions-box li {
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .instructions-box li span.icon {
+      font-size: 1.2rem;
+    }
+
+    .arcade-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      color: #040714;
+      font-family: var(--font-main);
+      font-size: 1.25rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 16px 36px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(0, 242, 254, 0.4), inset 0 2px 2px rgba(255, 255, 255, 0.6);
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .arcade-btn:hover {
+      transform: translateY(-3px) scale(1.04);
+      box-shadow: 0 15px 35px rgba(0, 242, 254, 0.6), inset 0 2px 2px rgba(255, 255, 255, 0.8);
+      background: linear-gradient(135deg, #38f9d7 0%, #43e97b 100%);
+    }
+
+    .arcade-btn:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    /* Screen Flash Notification for Penalty or Correct */
+    #flash-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 1500;
+      transition: opacity 0.15s ease-out;
+    }
+
+    #flash-overlay.penalty {
+      background: radial-gradient(circle, rgba(255, 0, 60, 0.4) 0%, rgba(255, 0, 0, 0.8) 100%);
+      opacity: 1;
+    }
+
+    #flash-overlay.bonus {
+      background: radial-gradient(circle, rgba(0, 255, 128, 0.3) 0%, rgba(0, 242, 254, 0.6) 100%);
+      opacity: 1;
+    }
+
+    /* Controls guidance bar at bottom */
+    #controls-bar {
+      margin: 0 auto;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 30px;
+      padding: 10px 24px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .key-badge {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      margin-right: 4px;
+    }
+
+    /* Responsive tweaks */
+    @media (max-width: 768px) {
+      #top-hud {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .hud-card {
+        padding: 8px 16px;
+        min-width: 100px;
+      }
+      .hud-value {
+        font-size: 1.4rem;
+      }
+      #target-badge-card {
+        order: -1;
+        width: 100%;
+      }
+      #controls-bar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Flash Indicator for Hit/Miss Feedback -->
+  <div id="flash-overlay"></div>
+
+  <!-- 2D UI Overlay (HUD and Menus) -->
+  <div id="ui-container">
+    <!-- Active HUD -->
+    <div id="top-hud">
+      <div class="hud-card">
+        <span class="hud-label">Score</span>
+        <span class="hud-value" id="score-value">0</span>
+      </div>
+
+      <div class="hud-card" id="target-badge-card">
+        <span class="hud-label">Collect Target Color</span>
+        <div>
+          <span id="target-color-preview"></span>
+          <span id="target-name-display">READY</span>
+        </div>
+        <span id="target-progress-display" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; font-weight: 700;">0 / 0 Collected</span>
+      </div>
+
+      <div class="hud-card">
+        <span class="hud-label">Round</span>
+        <span class="hud-value" id="round-value">1</span>
+      </div>
+
+      <div class="hud-card">
+        <span class="hud-label">Time</span>
+        <span class="hud-value" id="timer-value">30s</span>
+      </div>
+    </div>
+
+    <!-- Bottom Controls Hint for Desktop -->
+    <div id="controls-bar">
+      <span><span class="key-badge">WASD</span> Move</span>
+      <span><span class="key-badge">Mouse Click</span> / <span class="key-badge">VR Trigger</span> Collect Box</span>
+      <span><span class="key-badge">Quest 3S</span> Left Stick Move / Right Stick Snap Turn</span>
+    </div>
+  </div>
+
+  <!-- Start Menu Modal -->
+  <div id="start-modal" class="modal-overlay interactive">
+    <div class="game-modal">
+      <h1 class="modal-title">ChromaQuest VR</h1>
+      <p class="modal-subtitle">3D Color-Matching Collection Arena for Meta Quest 3S & WebXR</p>
+
+      <div class="instructions-box">
+        <ul>
+          <li><span class="icon">🎯</span> <strong>Find and collect</strong> only the specified target color.</li>
+          <li><span class="icon">⚡</span> <strong>Correct Box:</strong> +100 Points &amp; round progress.</li>
+          <li><span class="icon">⚠️</span> <strong>Wrong Box:</strong> -50 Points penalty &amp; visual glitch!</li>
+          <li><span class="icon">🎮</span> <strong>VR Controls:</strong> Aim laser with controller, press <strong>Trigger</strong> to collect. Thumbsticks to move/turn.</li>
+        </ul>
+      </div>
+
+      <button id="start-btn" class="arcade-btn">
+        <span>🚀 Start Game</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Game Over Modal -->
+  <div id="gameover-modal" class="modal-overlay hidden interactive">
+    <div class="game-modal">
+      <h1 class="modal-title" style="background: linear-gradient(135deg, #ff0844, #ffb199); -webkit-background-clip: text;">Game Over</h1>
+      <p class="modal-subtitle">Time has expired! Here is how you performed:</p>
+
+      <div class="instructions-box" style="text-align: center;">
+        <div style="font-size: 0.9rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px;">Final Score</div>
+        <div id="final-score-display" style="font-size: 3.2rem; font-weight: 900; color: var(--accent-yellow); font-family: var(--font-mono); margin: 5px 0 15px 0;">0</div>
+
+        <div style="display: flex; justify-content: space-around; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Rounds Cleared</div>
+            <div id="final-rounds-display" style="font-size: 1.4rem; font-weight: 800; color: #fff;">0</div>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Accuracy</div>
+            <div id="final-accuracy-display" style="font-size: 1.4rem; font-weight: 800; color: var(--accent-cyan);">100%</div>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Total Collected</div>
+            <div id="final-collected-display" style="font-size: 1.4rem; font-weight: 800; color: #34c759;">0</div>
+          </div>
+        </div>
+      </div>
+
+      <button id="restart-btn" class="arcade-btn">
+        <span>🔄 Play Again</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- A-FRAME 3D SCENE -->
+  <a-scene
+    renderer="antialias: true; colorManagement: true; highRefreshRate: true; foveationLevel: 2;"
+    fog="type: exponential; color: #080b18; density: 0.022;"
+    vr-mode-ui="enabled: true"
+    game-manager
+  >
+    <!-- Assets definition -->
+    <a-assets>
+      <!-- Audio synthesizers are embedded in JS via Web Audio API -->
+      <canvas id="gridCanvas" width="512" height="512"></canvas>
+    </a-assets>
+
+    <!-- Environment & Lighting -->
+    <a-sky color="#080b18"></a-sky>
+
+    <!-- Arena Ambient & Lights -->
+    <a-entity light="type: ambient; color: #3b4262; intensity: 0.9;"></a-entity>
+    <a-entity light="type: directional; color: #94b5ff; intensity: 1.2; position: 5 15 8; castShadow: false;"></a-entity>
+    <a-entity light="type: point; color: #00f2fe; intensity: 2.0; distance: 25; position: 0 8 0;"></a-entity>
+    
+    <!-- Central Arena Floor & Platform -->
+    <a-entity id="arena-floor-group">
+      <!-- Main glowing circular floor -->
+      <a-circle position="0 0.01 0" rotation="-90 0 0" radius="16" material="color: #0d1226; roughness: 0.2; metalness: 0.8;"></a-circle>
+      <!-- Concentric glowing rings on floor -->
+      <a-ring position="0 0.02 0" rotation="-90 0 0" radius-inner="4.9" radius-outer="5.05" material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 0.8; opacity: 0.8;"></a-ring>
+      <a-ring position="0 0.02 0" rotation="-90 0 0" radius-inner="9.9" radius-outer="10.05" material="color: #ff007f; emissive: #ff007f; emissiveIntensity: 0.8; opacity: 0.7;"></a-ring>
+      <a-ring position="0 0.02 0" rotation="-90 0 0" radius-inner="14.85" radius-outer="15.0" material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 0.9; opacity: 0.9;"></a-ring>
+      <a-cylinder position="0 -0.2 0" radius="16.2" height="0.4" material="color: #050811; roughness: 0.9;"></a-cylinder>
+    </a-entity>
+
+    <!-- Arena Perimeter Boundary Pillars & Neon Beacons -->
+    <a-entity id="boundary-pillars"></a-entity>
+
+    <!-- 3D IN-WORLD ARENA BILLBOARD (Always visible in VR when looking up/around) -->
+    <a-entity id="arena-billboard" position="0 6.5 -13.5" rotation="15 0 0">
+      <!-- Background Board -->
+      <a-plane width="11" height="4.2" material="color: #0c1022; opacity: 0.92; roughness: 0.3; metalness: 0.8; side: double; transparent: true;"></a-plane>
+      <a-plane position="0 0 0.01" width="10.8" height="4.0" material="color: #040714; opacity: 0.95;"></a-plane>
+      <!-- Glowing Border Frame -->
+      <a-ring position="0 0 0.02" radius-inner="5.2" radius-outer="5.25" scale="1.05 0.42 1" material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 1;"></a-ring>
+
+      <!-- Billboard Header -->
+      <a-text value="CHROMAQUEST VR" position="0 1.5 0.05" align="center" width="8" color="#00f2fe" font="kelsonsans"></a-text>
+      
+      <!-- Billboard Target Display -->
+      <a-text id="vr-board-target-label" value="CURRENT TARGET:" position="0 0.9 0.05" align="center" width="6" color="#8e9bb4"></a-text>
+      <a-text id="vr-board-target-val" value="TARGET COLOR" position="0 0.35 0.05" align="center" width="9" color="#ffffff" font="kelsonsans"></a-text>
+      <a-sphere id="vr-board-color-orb" position="0 -0.4 0.15" radius="0.35" material="color: #ffffff; emissive: #ffffff; emissiveIntensity: 0.6; roughness: 0.1; metalness: 0.2;"></a-sphere>
+
+      <!-- Billboard Stats (Round, Time, Score) -->
+      <a-entity position="0 -1.3 0.05">
+        <a-text id="vr-board-round" value="ROUND: 1" position="-3.5 0 0" align="center" width="5.5" color="#00f2fe"></a-text>
+        <a-text id="vr-board-progress" value="PROGRESS: 0/5" position="0 0 0" align="center" width="5.5" color="#ffcc00"></a-text>
+        <a-text id="vr-board-score" value="SCORE: 0" position="3.5 0 0" align="center" width="5.5" color="#34c759"></a-text>
+      </a-entity>
+    </a-entity>
+
+    <!-- IN-VR FLOATING 3D START & RESTART BUTTON PANELS -->
+    <a-entity id="vr-interactive-panel" position="0 1.6 -2.5" rotation="0 0 0">
+      <!-- Start Panel in VR -->
+      <a-entity id="vr-start-panel">
+        <a-plane width="2.4" height="1.4" material="color: #0d132b; opacity: 0.95; roughness: 0.2; metalness: 0.7; side: double;"></a-plane>
+        <a-ring radius-inner="1.15" radius-outer="1.18" scale="1.05 0.62 1" position="0 0 0.01" material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 0.8;"></a-ring>
+        <a-text value="CHROMAQUEST VR" position="0 0.45 0.05" align="center" width="3.2" color="#00f2fe" font="kelsonsans"></a-text>
+        <a-text value="Point laser & press trigger to start" position="0 0.2 0.05" align="center" width="2.0" color="#8e9bb4"></a-text>
+        
+        <!-- Interactive Start 3D Button -->
+        <a-entity id="vr-start-btn" class="clickable" position="0 -0.25 0.05" vr-button-hover>
+          <a-box width="1.6" height="0.45" depth="0.1" material="color: #00f2fe; emissive: #0077aa; emissiveIntensity: 0.5; roughness: 0.3;"></a-box>
+          <a-text value="START GAME" position="0 0 0.07" align="center" width="3.2" color="#040714" font="kelsonsans"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- Game Over Panel in VR (hidden initially) -->
+      <a-entity id="vr-gameover-panel" visible="false">
+        <a-plane width="2.6" height="1.8" material="color: #140b18; opacity: 0.95; roughness: 0.2; metalness: 0.7; side: double;"></a-plane>
+        <a-ring radius-inner="1.25" radius-outer="1.28" scale="1.05 0.72 1" position="0 0 0.01" material="color: #ff007f; emissive: #ff007f; emissiveIntensity: 0.8;"></a-ring>
+        <a-text value="GAME OVER" position="0 0.65 0.05" align="center" width="4.0" color="#ff007f" font="kelsonsans"></a-text>
+        <a-text id="vr-go-score-text" value="SCORE: 0" position="0 0.32 0.05" align="center" width="3.5" color="#ffcc00" font="kelsonsans"></a-text>
+        <a-text id="vr-go-stats-text" value="Rounds: 0 | Collected: 0" position="0 0.05 0.05" align="center" width="2.2" color="#8e9bb4"></a-text>
+
+        <!-- Interactive Restart 3D Button -->
+        <a-entity id="vr-restart-btn" class="clickable" position="0 -0.45 0.05" vr-button-hover>
+          <a-box width="1.6" height="0.45" depth="0.1" material="color: #34c759; emissive: #1b8538; emissiveIntensity: 0.5; roughness: 0.3;"></a-box>
+          <a-text value="PLAY AGAIN" position="0 0 0.07" align="center" width="3.2" color="#040714" font="kelsonsans"></a-text>
+        </a-entity>
+      </a-entity>
+    </a-entity>
+
+    <!-- Container for dynamic collectible colored cubes -->
+    <a-entity id="cubes-container"></a-entity>
+
+    <!-- Container for floating score popups & particle bursts -->
+    <a-entity id="fx-container"></a-entity>
+
+    <!-- PLAYER RIG & CAMERA -->
+    <a-entity id="rig" position="0 0 0" quest-locomotion>
+      <a-camera id="camera" position="0 1.6 0" look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 20">
+        
+        <!-- Desktop / Gaze Mouse Cursor Fallback -->
+        <a-entity
+          id="mouse-cursor"
+          cursor="rayOrigin: mouse; fuse: false;"
+          raycaster="objects: .clickable, .collectible; far: 40;"
+        ></a-entity>
+
+        <!-- In-Headset Floating Mini-HUD (comfortably positioned at bottom-edge of view) -->
+        <a-entity id="headset-mini-hud" position="0 -0.4 -1.0" rotation="-15 0 0">
+          <a-plane width="0.75" height="0.2" material="color: #0b1024; opacity: 0.85; roughness: 0.5;" position="0 0 0"></a-plane>
+          <a-circle id="hud-target-orb" radius="0.05" position="-0.26 0 0.01" material="color: #ffffff; emissive: #ffffff; emissiveIntensity: 0.6;"></a-circle>
+          <a-text id="hud-target-name" value="TARGET" position="-0.18 0.03 0.01" width="1.2" color="#ffffff" font="kelsonsans"></a-text>
+          <a-text id="hud-progress-text" value="0/5" position="-0.18 -0.04 0.01" width="0.9" color="#8e9bb4"></a-text>
+          <a-text id="hud-timer-text" value="30s" position="0.22 0.02 0.01" align="center" width="1.3" color="#00f2fe" font="kelsonsans"></a-text>
+        </a-entity>
+      </a-camera>
+
+      <!-- VR Controller: Left Hand (Movement / Laser / Raycaster) -->
+      <a-entity id="left-controller"
+        laser-controls="hand: left"
+        raycaster="objects: .clickable, .collectible; far: 30; lineColor: #00f2fe; lineOpacity: 0.7;"
+        oculus-touch-controls="hand: left"
+        quest-controller-listener="hand: left"
+      >
+        <!-- Controller Laser Visual Glow -->
+        <a-sphere radius="0.012" material="color: #00f2fe; emissive: #00f2fe;"></a-sphere>
+      </a-entity>
+
+      <!-- VR Controller: Right Hand (Selection / Laser / Raycaster) -->
+      <a-entity id="right-controller"
+        laser-controls="hand: right"
+        raycaster="objects: .clickable, .collectible; far: 30; lineColor: #ff007f; lineOpacity: 0.7;"
+        oculus-touch-controls="hand: right"
+        quest-controller-listener="hand: right"
+      >
+        <!-- Controller Laser Visual Glow -->
+        <a-sphere radius="0.012" material="color: #ff007f; emissive: #ff007f;"></a-sphere>
+      </a-entity>
+    </a-entity>
+  </a-scene>
+
+  <!-- GAME LOGIC & SCRIPTS -->
+  <script>
+    /* =========================================================================
+       1. COLOR PALETTE DEFINITION & DATA STRUCTURES
+       ========================================================================= */
+    const COLOR_PALETTE = [
+      { id: 'red', name: 'RED', hex: '#FF3B30', emissive: '#881008', textColor: '#FF3B30' },
+      { id: 'blue', name: 'BLUE', hex: '#007AFF', emissive: '#003688', textColor: '#007AFF' },
+      { id: 'green', name: 'GREEN', hex: '#34C759', emissive: '#0d5c22', textColor: '#34C759' },
+      { id: 'yellow', name: 'YELLOW', hex: '#FFCC00', emissive: '#7a6000', textColor: '#FFCC00' },
+      { id: 'purple', name: 'PURPLE', hex: '#AF52DE', emissive: '#4d166b', textColor: '#AF52DE' },
+      { id: 'orange', name: 'ORANGE', hex: '#FF9500', emissive: '#854200', textColor: '#FF9500' },
+      { id: 'cyan', name: 'CYAN', hex: '#00F2FE', emissive: '#00656a', textColor: '#00F2FE' },
+      { id: 'pink', name: 'MAGENTA', hex: '#FF007F', emissive: '#73003a', textColor: '#FF007F' }
+    ];
+
+    /* =========================================================================
+       2. PROCEDURAL SYNTHESIZER (WEB AUDIO API) - Zero External Files
+       ========================================================================= */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.masterGain = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+          this.masterGain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playCorrect() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 arpeggio
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+
+          gain.gain.setValueAtTime(0, now + idx * 0.05);
+          gain.gain.linearRampToValueAtTime(0.25, now + idx * 0.05 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+
+          osc.start(now + idx * 0.05);
+          osc.stop(now + idx * 0.05 + 0.36);
+        });
+      }
+
+      playWrong() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc1.type = 'sawtooth';
+        osc2.type = 'square';
+        osc1.frequency.setValueAtTime(140, now);
+        osc1.frequency.exponentialRampToValueAtTime(70, now + 0.3);
+        osc2.frequency.setValueAtTime(148, now);
+        osc2.frequency.exponentialRampToValueAtTime(74, now + 0.3);
+
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.3);
+        osc2.stop(now + 0.3);
+      }
+
+      playRoundWin() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const chords = [
+          { f: 523.25, t: 0 },    // C5
+          { f: 659.25, t: 0.08 }, // E5
+          { f: 783.99, t: 0.16 }, // G5
+          { f: 1046.50, t: 0.24 },// C6
+          { f: 1318.51, t: 0.35 } // E6
+        ];
+        chords.forEach(c => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(c.f, now + c.t);
+
+          gain.gain.setValueAtTime(0.3, now + c.t);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + c.t + 0.5);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+
+          osc.start(now + c.t);
+          osc.stop(now + c.t + 0.52);
+        });
+      }
+
+      playGameOver() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const notes = [440, 392, 349.23, 293.66, 220]; // Descending minor
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.14);
+
+          gain.gain.setValueAtTime(0.25, now + idx * 0.14);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+
+          osc.start(now + idx * 0.14);
+          osc.stop(now + idx * 0.14 + 0.36);
+        });
+      }
+
+      playClick() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+
+        osc.start(now);
+        osc.stop(now + 0.09);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* =========================================================================
+       3. A-FRAME CUSTOM COMPONENTS
+       ========================================================================= */
+
+    // Floating bob & rotation animation for collectible cubes
+    AFRAME.registerComponent('collectible-cube', {
+      schema: {
+        colorId: { type: 'string', default: 'red' },
+        hex: { type: 'string', default: '#FF3B30' },
+        emissive: { type: 'string', default: '#881008' },
+        initialY: { type: 'number', default: 1.5 },
+        bobSpeed: { type: 'number', default: 1.5 },
+        rotSpeed: { type: 'number', default: 45 }
+      },
+
+      init: function () {
+        this.timeOffset = Math.random() * Math.PI * 2;
+        this.rotY = Math.random() * 360;
+        this.el.classList.add('collectible', 'clickable');
+
+        // Handle direct interaction (Click / VR Laser Trigger)
+        this.onClick = this.onClick.bind(this);
+        this.el.addEventListener('click', this.onClick);
+      },
+
+      tick: function (time, deltaTime) {
+        if (!deltaTime) return;
+        const dt = deltaTime / 1000;
+        const t = time / 1000;
+
+        // Smooth floating oscillation
+        const newY = this.data.initialY + Math.sin(t * this.data.bobSpeed + this.timeOffset) * 0.18;
+        this.rotY = (this.rotY + this.data.rotSpeed * dt) % 360;
+
+        this.el.object3D.position.y = newY;
+        this.el.object3D.rotation.y = THREE.MathUtils.degToRad(this.rotY);
+        this.el.object3D.rotation.x = Math.sin(t * 1.2 + this.timeOffset) * 0.15;
+      },
+
+      onClick: function (evt) {
+        // Prevent duplicate trigger on same tick
+        if (this.isDestroyed) return;
+        this.isDestroyed = true;
+
+        const gameManager = document.querySelector('a-scene').components['game-manager'];
+        if (gameManager) {
+          gameManager.handleBoxCollected(this.data.colorId, this.el.object3D.position);
+        }
+
+        // Animate collection scale down
+        this.animateCollection();
+      },
+
+      animateCollection: function () {
+        const el = this.el;
+        let scale = 1.0;
+        const shrinkInterval = setInterval(() => {
+          scale -= 0.15;
+          if (scale <= 0) {
+            clearInterval(shrinkInterval);
+            if (el.parentNode) {
+              el.parentNode.removeChild(el);
+            }
+          } else {
+            el.setAttribute('scale', `${scale} ${scale} ${scale}`);
+          }
+        }, 20);
+      },
+
+      remove: function () {
+        this.el.removeEventListener('click', this.onClick);
+      }
+    });
+
+    // Interactive button hover component for VR
+    AFRAME.registerComponent('vr-button-hover', {
+      init: function () {
+        const el = this.el;
+        const box = el.querySelector('a-box') || el;
+        const origScale = el.getAttribute('scale') || { x: 1, y: 1, z: 1 };
+
+        el.addEventListener('mouseenter', () => {
+          el.setAttribute('scale', '1.08 1.08 1.08');
+        });
+
+        el.addEventListener('mouseleave', () => {
+          el.setAttribute('scale', `${origScale.x} ${origScale.y} ${origScale.z}`);
+        });
+      }
+    });
+
+    // Quest 3S Controller Thumbstick Locomotion & Snap Turn
+    AFRAME.registerComponent('quest-locomotion', {
+      schema: {
+        speed: { type: 'number', default: 4.5 },
+        snapAngle: { type: 'number', default: 45 }
+      },
+
+      init: function () {
+        this.leftStick = { x: 0, y: 0 };
+        this.rightStick = { x: 0, y: 0 };
+        this.canSnap = true;
+        this.camera = document.querySelector('#camera');
+      },
+
+      tick: function (time, deltaTime) {
+        if (!deltaTime) return;
+        const dt = deltaTime / 1000;
+
+        // 1. Smooth Translation via Left Controller Stick
+        if (Math.abs(this.leftStick.x) > 0.1 || Math.abs(this.leftStick.y) > 0.1) {
+          const camEl = this.camera;
+          const camRot = camEl.getAttribute('rotation');
+          const yawRad = THREE.MathUtils.degToRad(camRot.y);
+
+          const forward = -this.leftStick.y;
+          const strafe = this.leftStick.x;
+
+          const dx = (Math.sin(yawRad) * forward + Math.cos(yawRad) * strafe) * this.data.speed * dt;
+          const dz = (Math.cos(yawRad) * forward - Math.sin(yawRad) * strafe) * this.data.speed * dt;
+
+          const curPos = this.el.getAttribute('position');
+          const nextX = curPos.x + dx;
+          const nextZ = curPos.z + dz;
+
+          // Arena boundary clamp (radius 15m)
+          const dist = Math.sqrt(nextX * nextX + nextZ * nextZ);
+          if (dist < 14.5) {
+            this.el.setAttribute('position', { x: nextX, y: curPos.y, z: nextZ });
+          }
+        }
+
+        // 2. Snap Turn via Right Controller Stick
+        if (Math.abs(this.rightStick.x) > 0.6) {
+          if (this.canSnap) {
+            this.canSnap = false;
+            const curRot = this.el.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+            const turnDir = this.rightStick.x > 0 ? -this.data.snapAngle : this.data.snapAngle;
+            this.el.setAttribute('rotation', { x: curRot.x, y: curRot.y + turnDir, z: curRot.z });
+          }
+        } else if (Math.abs(this.rightStick.x) < 0.2) {
+          this.canSnap = true;
+        }
+      }
+    });
+
+    // Controller input listener for Oculus Touch / Meta Quest 3S
+    AFRAME.registerComponent('quest-controller-listener', {
+      schema: { hand: { type: 'string', default: 'right' } },
+
+      init: function () {
+        const rig = document.querySelector('#rig');
+        const loco = rig.components['quest-locomotion'];
+
+        this.el.addEventListener('axismove', (evt) => {
+          if (!loco) return;
+          const axes = evt.detail.axis;
+          if (!axes || axes.length < 2) return;
+
+          // Standard WebXR Gamepad axes: [0]=X (horizontal), [1]=Y (vertical) or [2],[3] on some profiles
+          const stickX = axes.length >= 4 ? (axes[2] !== 0 ? axes[2] : axes[0]) : axes[0];
+          const stickY = axes.length >= 4 ? (axes[3] !== 0 ? axes[3] : axes[1]) : axes[1];
+
+          if (this.data.hand === 'left') {
+            loco.leftStick.x = stickX;
+            loco.leftStick.y = stickY;
+          } else {
+            loco.rightStick.x = stickX;
+            loco.rightStick.y = stickY;
+          }
+        });
+      }
+    });
+
+    /* =========================================================================
+       4. MASTER GAME MANAGER
+       ========================================================================= */
+    AFRAME.registerComponent('game-manager', {
+      init: function () {
+        this.gameState = 'START'; // 'START', 'PLAYING', 'ROUND_WIN', 'GAME_OVER'
+        this.score = 0;
+        this.round = 1;
+        this.timeRemaining = 30;
+        this.timerInterval = null;
+
+        // Current round metrics
+        this.currentTargetColor = null;
+        this.requiredCount = 0;
+        this.collectedCount = 0;
+        this.totalSpawned = 0;
+
+        // Overall stats
+        this.totalCollectedCorrect = 0;
+        this.totalCollectedWrong = 0;
+        this.roundsCompleted = 0;
+
+        // DOM UI Elements
+        this.uiScore = document.getElementById('score-value');
+        this.uiRound = document.getElementById('round-value');
+        this.uiTimer = document.getElementById('timer-value');
+        this.uiTargetName = document.getElementById('target-name-display');
+        this.uiTargetOrb = document.getElementById('target-color-preview');
+        this.uiTargetProgress = document.getElementById('target-progress-display');
+        this.flashOverlay = document.getElementById('flash-overlay');
+
+        // Modals
+        this.startModal = document.getElementById('start-modal');
+        this.gameoverModal = document.getElementById('gameover-modal');
+        this.startBtn = document.getElementById('start-btn');
+        this.restartBtn = document.getElementById('restart-btn');
+
+        // VR Panels
+        this.vrStartPanel = document.getElementById('vr-start-panel');
+        this.vrGameOverPanel = document.getElementById('vr-gameover-panel');
+        this.vrStartBtn = document.getElementById('vr-start-btn');
+        this.vrRestartBtn = document.getElementById('vr-restart-btn');
+
+        // 3D HUD & Billboard
+        this.vrBoardTargetVal = document.getElementById('vr-board-target-val');
+        this.vrBoardColorOrb = document.getElementById('vr-board-color-orb');
+        this.vrBoardRound = document.getElementById('vr-board-round');
+        this.vrBoardProgress = document.getElementById('vr-board-progress');
+        this.vrBoardScore = document.getElementById('vr-board-score');
+
+        this.hudTargetOrb = document.getElementById('hud-target-orb');
+        this.hudTargetName = document.getElementById('hud-target-name');
+        this.hudProgressText = document.getElementById('hud-progress-text');
+        this.hudTimerText = document.getElementById('hud-timer-text');
+
+        this.cubesContainer = document.getElementById('cubes-container');
+        this.fxContainer = document.getElementById('fx-container');
+
+        // Build 3D Arena Perimeter Pillars
+        this.buildPerimeterPillars();
+
+        // Bind Button Listeners
+        this.startGame = this.startGame.bind(this);
+        this.startBtn.addEventListener('click', this.startGame);
+        this.restartBtn.addEventListener('click', this.startGame);
+        this.vrStartBtn.addEventListener('click', this.startGame);
+        this.vrRestartBtn.addEventListener('click', this.startGame);
+      },
+
+      buildPerimeterPillars: function () {
+        const pillarGroup = document.getElementById('boundary-pillars');
+        const numPillars = 18;
+        const radius = 15.5;
+
+        for (let i = 0; i < numPillars; i++) {
+          const angle = (i / numPillars) * Math.PI * 2;
+          const x = Math.sin(angle) * radius;
+          const z = Math.cos(angle) * radius;
+          const color = i % 2 === 0 ? '#00f2fe' : '#ff007f';
+
+          const pillar = document.createElement('a-cylinder');
+          pillar.setAttribute('position', `${x} 2.5 ${z}`);
+          pillar.setAttribute('radius', '0.22');
+          pillar.setAttribute('height', '5.0');
+          pillar.setAttribute('material', 'color: #0d1326; roughness: 0.3; metalness: 0.8;');
+
+          // Glowing Cap
+          const cap = document.createElement('a-sphere');
+          cap.setAttribute('position', `${x} 5.1 ${z}`);
+          cap.setAttribute('radius', '0.3');
+          cap.setAttribute('material', `color: ${color}; emissive: ${color}; emissiveIntensity: 1.0;`);
+
+          pillarGroup.appendChild(pillar);
+          pillarGroup.appendChild(cap);
+        }
+      },
+
+      startGame: function () {
+        sound.playClick();
+        this.gameState = 'PLAYING';
+        this.score = 0;
+        this.round = 1;
+        this.roundsCompleted = 0;
+        this.totalCollectedCorrect = 0;
+        this.totalCollectedWrong = 0;
+
+        // Hide menus
+        this.startModal.classList.add('hidden');
+        this.gameoverModal.classList.add('hidden');
+        this.vrStartPanel.setAttribute('visible', 'false');
+        this.vrGameOverPanel.setAttribute('visible', 'false');
+
+        // Remove .clickable from VR start/restart buttons while playing
+        this.vrStartBtn.classList.remove('clickable');
+        this.vrRestartBtn.classList.remove('clickable');
+
+        // Reset Rig position to center
+        const rig = document.querySelector('#rig');
+        rig.setAttribute('position', '0 0 0');
+
+        this.startRound();
+      },
+
+      startRound: function () {
+        this.clearCubes();
+
+        // 1. Difficulty scaling per round
+        // Colors pool increases as rounds progress
+        let activeColorCount = Math.min(4 + Math.floor((this.round - 1) / 2), COLOR_PALETTE.length);
+        const availableColors = COLOR_PALETTE.slice(0, activeColorCount);
+
+        // Pick target color randomly
+        this.currentTargetColor = availableColors[Math.floor(Math.random() * availableColors.length)];
+
+        // Quantity needed: starts at 4, increases by 1 every 2 rounds
+        this.requiredCount = 4 + Math.floor((this.round - 1) * 0.8);
+        this.collectedCount = 0;
+
+        // Total boxes in arena: target count + distractor boxes
+        const distractorCount = Math.floor(this.requiredCount * (1.2 + this.round * 0.15));
+        this.totalSpawned = this.requiredCount + distractorCount;
+
+        // Timer duration: generous at start, tightly balanced for higher rounds
+        this.timeRemaining = Math.max(18, 32 - (this.round - 1) * 2);
+
+        // 2. Update UI
+        this.updateHUD();
+        this.update3DBillboard();
+
+        // 3. Spawn Cubes in 3D Arena
+        this.spawnBoxes(availableColors, distractorCount);
+
+        // 4. Start Countdown Timer
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timerInterval = setInterval(() => {
+          if (this.gameState !== 'PLAYING') return;
+
+          this.timeRemaining--;
+          this.updateHUD();
+
+          if (this.timeRemaining <= 5 && this.timeRemaining > 0) {
+            this.uiTimer.classList.add('warning');
+            sound.playClick();
+          } else {
+            this.uiTimer.classList.remove('warning');
+          }
+
+          if (this.timeRemaining <= 0) {
+            clearInterval(this.timerInterval);
+            this.triggerGameOver();
+          }
+        }, 1000);
+      },
+
+      spawnBoxes: function (availableColors, distractorCount) {
+        const distractorColors = availableColors.filter(c => c.id !== this.currentTargetColor.id);
+        const boxList = [];
+
+        // Add Target Color boxes
+        for (let i = 0; i < this.requiredCount; i++) {
+          boxList.push(this.currentTargetColor);
+        }
+
+        // Add Distractor Color boxes
+        for (let i = 0; i < distractorCount; i++) {
+          const randomDistractor = distractorColors[Math.floor(Math.random() * distractorColors.length)];
+          boxList.push(randomDistractor);
+        }
+
+        // Shuffle spawn list
+        for (let i = boxList.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [boxList[i], boxList[j]] = [boxList[j], boxList[i]];
+        }
+
+        // Spawn positions with collision repulsion
+        const spawnedPositions = [];
+        const minDistance = 1.4;
+
+        boxList.forEach((colorItem, idx) => {
+          let pos = null;
+          let attempts = 0;
+
+          while (attempts < 50) {
+            attempts++;
+            // Polar coordinates for natural arena distribution
+            const radius = 2.5 + Math.random() * 10.5;
+            const angle = Math.random() * Math.PI * 2;
+            const x = Math.sin(angle) * radius;
+            const z = Math.cos(angle) * radius;
+            // Diverse vertical heights to encourage looking up & around
+            const y = 0.9 + Math.random() * 2.2;
+
+            // Check distance from existing boxes and center player spawn
+            const distToCenter = Math.sqrt(x * x + z * z);
+            if (distToCenter < 1.8) continue;
+
+            let tooClose = false;
+            for (const sp of spawnedPositions) {
+              const dx = sp.x - x;
+              const dy = sp.y - y;
+              const dz = sp.z - z;
+              if (Math.sqrt(dx * dx + dy * dy + dz * dz) < minDistance) {
+                tooClose = true;
+                break;
+              }
+            }
+
+            if (!tooClose) {
+              pos = { x, y, z };
+              spawnedPositions.push(pos);
+              break;
+            }
+          }
+
+          if (!pos) {
+            pos = { x: (Math.random() - 0.5) * 16, y: 1.5, z: (Math.random() - 0.5) * 16 };
+          }
+
+          // Create 3D Entity
+          this.createCubeEntity(colorItem, pos, idx);
+        });
+      },
+
+      createCubeEntity: function (colorItem, pos, idx) {
+        const cubeEl = document.createElement('a-entity');
+        cubeEl.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+
+        // Main Box Primitive with glossy arcade material
+        const box = document.createElement('a-box');
+        box.setAttribute('width', '0.65');
+        box.setAttribute('height', '0.65');
+        box.setAttribute('depth', '0.65');
+        box.setAttribute('material', `
+          color: ${colorItem.hex};
+          emissive: ${colorItem.emissive};
+          emissiveIntensity: 0.7;
+          roughness: 0.15;
+          metalness: 0.4;
+        `);
+
+        // Glowing core / outline effect inside
+        const core = document.createElement('a-box');
+        core.setAttribute('width', '0.72');
+        core.setAttribute('height', '0.72');
+        core.setAttribute('depth', '0.72');
+        core.setAttribute('material', `
+          color: #ffffff;
+          wireframe: true;
+          opacity: 0.4;
+        `);
+
+        cubeEl.appendChild(box);
+        cubeEl.appendChild(core);
+
+        // Attach custom logic component
+        cubeEl.setAttribute('collectible-cube', {
+          colorId: colorItem.id,
+          hex: colorItem.hex,
+          emissive: colorItem.emissive,
+          initialY: pos.y,
+          bobSpeed: 1.2 + Math.random() * 0.8,
+          rotSpeed: 30 + Math.random() * 40
+        });
+
+        this.cubesContainer.appendChild(cubeEl);
+      },
+
+      handleBoxCollected: function (colorId, worldPos) {
+        if (this.gameState !== 'PLAYING') return;
+
+        if (colorId === this.currentTargetColor.id) {
+          // CORRECT COLOR MATCH!
+          this.collectedCount++;
+          this.totalCollectedCorrect++;
+          const roundBonus = 100 + (this.round - 1) * 15;
+          this.score += roundBonus;
+
+          // Sound & VFX
+          sound.playCorrect();
+          this.spawnParticleBurst(worldPos, this.currentTargetColor.hex);
+          this.spawnFloatingScore(`+${roundBonus}`, worldPos, '#34c759');
+          this.triggerScreenFlash('bonus');
+
+          // Check for Round Victory
+          if (this.collectedCount >= this.requiredCount) {
+            this.handleRoundComplete();
+          }
+        } else {
+          // WRONG COLOR MATCH! Penalty
+          this.totalCollectedWrong++;
+          const penalty = 50;
+          this.score = Math.max(0, this.score - penalty);
+          // Deduct 2 seconds as additional penalty
+          this.timeRemaining = Math.max(1, this.timeRemaining - 2);
+
+          sound.playWrong();
+          this.spawnFloatingScore(`-${penalty}`, worldPos, '#ff3b30');
+          this.triggerScreenFlash('penalty');
+        }
+
+        this.updateHUD();
+        this.update3DBillboard();
+      },
+
+      handleRoundComplete: function () {
+        this.gameState = 'ROUND_WIN';
+        if (this.timerInterval) clearInterval(this.timerInterval);
+
+        // Time bonus
+        const timeBonus = this.timeRemaining * 25;
+        this.score += timeBonus;
+        this.roundsCompleted++;
+
+        sound.playRoundWin();
+        this.spawnFloatingScore(`ROUND CLEAR! +${timeBonus}`, { x: 0, y: 2.2, z: -3 }, '#00f2fe');
+
+        // Short celebration before advancing
+        setTimeout(() => {
+          this.round++;
+          this.gameState = 'PLAYING';
+          this.startRound();
+        }, 1500);
+      },
+
+      triggerGameOver: function () {
+        this.gameState = 'GAME_OVER';
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        sound.playGameOver();
+
+        // Calculate accuracy
+        const totalPicks = this.totalCollectedCorrect + this.totalCollectedWrong;
+        const accuracy = totalPicks > 0 ? Math.round((this.totalCollectedCorrect / totalPicks) * 100) : 100;
+
+        // 1. Update 2D Modal
+        document.getElementById('final-score-display').textContent = this.score;
+        document.getElementById('final-rounds-display').textContent = this.roundsCompleted;
+        document.getElementById('final-accuracy-display').textContent = `${accuracy}%`;
+        document.getElementById('final-collected-display').textContent = this.totalCollectedCorrect;
+        this.gameoverModal.classList.remove('hidden');
+
+        // 2. Update VR 3D In-World Game Over Panel
+        document.getElementById('vr-go-score-text').setAttribute('value', `FINAL SCORE: ${this.score}`);
+        document.getElementById('vr-go-stats-text').setAttribute('value', `Rounds: ${this.roundsCompleted} | Collected: ${this.totalCollectedCorrect} (${accuracy}%)`);
+        this.vrGameOverPanel.setAttribute('visible', 'true');
+        this.vrRestartBtn.classList.add('clickable');
+      },
+
+      triggerScreenFlash: function (type) {
+        this.flashOverlay.className = type;
+        setTimeout(() => {
+          this.flashOverlay.className = '';
+        }, 180);
+      },
+
+      spawnFloatingScore: function (textVal, pos, colorHex) {
+        const textEl = document.createElement('a-text');
+        textEl.setAttribute('value', textVal);
+        textEl.setAttribute('position', `${pos.x} ${pos.y + 0.5} ${pos.z}`);
+        textEl.setAttribute('align', 'center');
+        textEl.setAttribute('width', '5.5');
+        textEl.setAttribute('color', colorHex);
+        textEl.setAttribute('font', 'kelsonsans');
+        textEl.setAttribute('look-at', '#camera');
+
+        this.fxContainer.appendChild(textEl);
+
+        let currentY = pos.y + 0.5;
+        let opacity = 1.0;
+        const anim = setInterval(() => {
+          currentY += 0.035;
+          opacity -= 0.03;
+          textEl.setAttribute('position', `${pos.x} ${currentY} ${pos.z}`);
+          textEl.setAttribute('opacity', `${opacity}`);
+
+          if (opacity <= 0) {
+            clearInterval(anim);
+            if (textEl.parentNode) {
+              textEl.parentNode.removeChild(textEl);
+            }
+          }
+        }, 30);
+      },
+
+      spawnParticleBurst: function (pos, colorHex) {
+        const count = 12;
+        for (let i = 0; i < count; i++) {
+          const particle = document.createElement('a-sphere');
+          particle.setAttribute('radius', '0.07');
+          particle.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+          particle.setAttribute('material', `color: ${colorHex}; emissive: ${colorHex}; emissiveIntensity: 1;`);
+
+          const vx = (Math.random() - 0.5) * 4;
+          const vy = (Math.random() - 0.2) * 4;
+          const vz = (Math.random() - 0.5) * 4;
+
+          this.fxContainer.appendChild(particle);
+
+          let px = pos.x;
+          let py = pos.y;
+          let pz = pos.z;
+          let life = 1.0;
+
+          const pAnim = setInterval(() => {
+            px += vx * 0.03;
+            py += vy * 0.03;
+            pz += vz * 0.03;
+            life -= 0.06;
+
+            particle.setAttribute('position', `${px} ${py} ${pz}`);
+            particle.setAttribute('scale', `${life} ${life} ${life}`);
+
+            if (life <= 0) {
+              clearInterval(pAnim);
+              if (particle.parentNode) {
+                particle.parentNode.removeChild(particle);
+              }
+            }
+          }, 25);
+        }
+      },
+
+      updateHUD: function () {
+        this.uiScore.textContent = this.score;
+        this.uiRound.textContent = this.round;
+        this.uiTimer.textContent = `${this.timeRemaining}s`;
+
+        if (this.currentTargetColor) {
+          this.uiTargetName.textContent = this.currentTargetColor.name;
+          this.uiTargetName.style.color = this.currentTargetColor.textColor;
+          this.uiTargetOrb.style.backgroundColor = this.currentTargetColor.hex;
+          this.uiTargetOrb.style.boxShadow = `0 0 15px ${this.currentTargetColor.hex}`;
+          this.uiTargetProgress.textContent = `${this.collectedCount} / ${this.requiredCount} Collected`;
+
+          // Headset mini HUD
+          this.hudTargetOrb.setAttribute('material', `color: ${this.currentTargetColor.hex}; emissive: ${this.currentTargetColor.hex}; emissiveIntensity: 0.8;`);
+          this.hudTargetName.setAttribute('value', this.currentTargetColor.name);
+          this.hudTargetName.setAttribute('color', this.currentTargetColor.hex);
+          this.hudProgressText.setAttribute('value', `${this.collectedCount}/${this.requiredCount}`);
+          this.hudTimerText.setAttribute('value', `${this.timeRemaining}s`);
+        }
+      },
+
+      update3DBillboard: function () {
+        if (!this.currentTargetColor) return;
+        this.vrBoardTargetVal.setAttribute('value', this.currentTargetColor.name);
+        this.vrBoardTargetVal.setAttribute('color', this.currentTargetColor.hex);
+        this.vrBoardColorOrb.setAttribute('material', `color: ${this.currentTargetColor.hex}; emissive: ${this.currentTargetColor.hex}; emissiveIntensity: 0.9;`);
+        this.vrBoardRound.setAttribute('value', `ROUND: ${this.round}`);
+        this.vrBoardProgress.setAttribute('value', `PROGRESS: ${this.collectedCount}/${this.requiredCount}`);
+        this.vrBoardScore.setAttribute('value', `SCORE: ${this.score}`);
+      },
+
+      clearCubes: function () {
+        while (this.cubesContainer.firstChild) {
+          this.cubesContainer.removeChild(this.cubesContainer.firstChild);
+        }
+        while (this.fxContainer.firstChild) {
+          this.fxContainer.removeChild(this.fxContainer.firstChild);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
